@@ -4,7 +4,14 @@
  */
 package config;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+
+import javax.swing.JOptionPane;
 
 /**
  *
@@ -90,6 +97,71 @@ public class ConfigManager {
             e.printStackTrace();
         }
     }    
+
+    public static void registrarImpresion(String empleado, Timestamp fecha) {
+        try (Connection conn = DriverManager.getConnection(MYSQL_URL + DB_NAME, MYSQL_USER, MYSQL_PASS)) {
+            String sql = "INSERT INTO impresiones (fecha, empleado) VALUES (?, ?)";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setTimestamp(1, fecha);
+                ps.setString(2, empleado);
+                ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            // System.out.println("Error al registrar la impresión: " + e.getMessage());
+            Mensajes.mostrarMensajeAutoCierre("❗ Error al registrar la impresión: " + e.getMessage(), 3000);
+        }
+    }
+
+    public static boolean impresionRegistrada(String empleado, Timestamp fecha) {
+        System.out.println("empleado: " + empleado + ", fecha: " + fecha);
+        try (Connection conn = DriverManager.getConnection(MYSQL_URL + DB_NAME, MYSQL_USER, MYSQL_PASS)) {
+            String sql = "SELECT COUNT(*) FROM impresiones WHERE empleado = ? AND DATE(fecha) = DATE(?)";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, empleado);
+                ps.setTimestamp(2, fecha);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        } catch (SQLException e) {
+            Mensajes.mostrarMensajeAutoCierre("❗ Error al verificar la impresión: " + e.getMessage(), 3000);
+        }
+        return false;
+    }
+
+    public static void cambiarConfiguracion() {
+        // Cargar configuración previa si existe
+        Config configPrevio = ConfigManager.loadConfig();
+        String ip = JOptionPane.showInputDialog("IP de la base de datos:", configPrevio != null ? configPrevio.ip : "");
+        String port = JOptionPane.showInputDialog("Puerto de la base de datos:", configPrevio != null ? configPrevio.port : "");
+        String name = JOptionPane.showInputDialog("Nombre de la base de datos:", configPrevio != null ? configPrevio.name : "");
+        String user = JOptionPane.showInputDialog("Usuario de la base de datos:", configPrevio != null ? configPrevio.user : "");
+        String sensorId = JOptionPane.showInputDialog("Sensor id:", configPrevio != null ? configPrevio.sensorId : "");
+        String pass = JOptionPane.showInputDialog("Contraseña de la base de datos:", configPrevio != null ? configPrevio.pass : "");
+        String printer = null;
+        boolean pruebaExitosa = false;
+        while (!pruebaExitosa) {
+            printer = PrinterSelector.selectPrinter();
+            if (printer == null) {
+                int opcion = JOptionPane.showConfirmDialog(null, "Debes seleccionar una impresora para continuar.\n¿Deseas cancelar la configuración?", "Impresora requerida", JOptionPane.YES_NO_OPTION);
+                if (opcion == JOptionPane.YES_OPTION) {
+                    Mensajes.mostrarMensajeAutoCierre("Configuración cancelada.", 2000);
+                    return;
+                }
+                continue;
+            }
+            pruebaExitosa = PrinterSelector.testPrint(printer);
+            if (!pruebaExitosa) {
+                JOptionPane.showMessageDialog(null, "La prueba de impresión falló. Selecciona otra impresora.");
+            }
+        }
+
+        Config config = new Config(ip, port, name, user, pass, sensorId, printer);
+        ConfigManager.saveConfig(config);
+        Mensajes.mostrarMensajeAutoCierre("Configuración actualizada. Reinicia la aplicación.", 3000);
+        System.exit(0);
+    }
     
     
 }
